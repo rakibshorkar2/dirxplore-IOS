@@ -20,18 +20,28 @@ class DatabaseHelper {
   }
 
   Future<Database> _initDatabase() async {
-    if (kIsWeb) {
-      databaseFactory = await getWebDatabaseFactory();
-      return await openDatabase('dirxplore_downloads.db',
-          version: 2, onCreate: _onCreate, onUpgrade: _onUpgrade);
-    } else {
-      String path = join(await getDatabasesPath(), 'dirxplore_downloads.db');
-      return await openDatabase(
-        path,
-        version: 2,
-        onCreate: _onCreate,
-        onUpgrade: _onUpgrade,
-      );
+    try {
+      if (kIsWeb) {
+        databaseFactory = await getWebDatabaseFactory();
+        return await openDatabase('dirxplore_downloads.db',
+            version: 2, onCreate: _onCreate, onUpgrade: _onUpgrade);
+      } else {
+        String path = join(await getDatabasesPath(), 'dirxplore_downloads.db');
+        return await openDatabase(
+          path,
+          version: 2,
+          onCreate: _onCreate,
+          onUpgrade: _onUpgrade,
+        );
+      }
+    } catch (e) {
+      debugPrint('Database initialization error: $e');
+      // On web, if it fails (likely due to missing sqlite3.wasm), return an in-memory database
+      // so the app can still start.
+      if (kIsWeb) {
+         return await openDatabase(inMemoryDatabasePath, version: 2, onCreate: _onCreate);
+      }
+      rethrow;
     }
   }
 

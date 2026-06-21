@@ -49,66 +49,73 @@ void callbackDispatcher() {
 }
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  try {
-    if (!PlatformUtils.isWeb) {
-      MediaKit.ensureInitialized();
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    try {
+      if (!PlatformUtils.isWeb) {
+        MediaKit.ensureInitialized();
+      }
+    } catch (e) {
+      debugPrint('MediaKit initialization failed: $e');
     }
-  } catch (e) {
-    debugPrint('MediaKit initialization failed: $e');
-  }
 
-  if (PlatformUtils.isAndroid) {
-    Workmanager().initialize(
-      callbackDispatcher,
-    );
+    if (PlatformUtils.isAndroid) {
+      Workmanager().initialize(
+        callbackDispatcher,
+      );
 
-    // Register the task to run periodically (e.g., every 15 mins when network is connected)
-    Workmanager().registerPeriodicTask(
-      "auto-resume-task",
-      "autoResumeDownloads",
-      frequency: const Duration(minutes: 15),
-      constraints: Constraints(
-        networkType: NetworkType.connected, // Only run if we have network
-        requiresBatteryNotLow: true, // Don't run if battery is low
+      // Register the task to run periodically (e.g., every 15 mins when network is connected)
+      Workmanager().registerPeriodicTask(
+        "auto-resume-task",
+        "autoResumeDownloads",
+        frequency: const Duration(minutes: 15),
+        constraints: Constraints(
+          networkType: NetworkType.connected, // Only run if we have network
+          requiresBatteryNotLow: true, // Don't run if battery is low
+        ),
+      );
+    }
+
+    try {
+      if (PlatformUtils.isAndroid) {
+        await FlutterDisplayMode.setHighRefreshRate();
+      }
+    } catch (e) {
+      debugPrint('Failed to set high refresh rate: $e');
+    }
+
+    final appState = AppState();
+    await appState.init();
+
+    final proxyProvider = AppProxyProvider();
+    await proxyProvider.init();
+
+    final dlProvider = DownloadProvider();
+    await dlProvider.init();
+    dlProvider.setMaxConcurrent(appState.maxConcurrentDownloads);
+
+
+    // Start the localhost proxy tunnel for external video players (non-web only)
+    if (!PlatformUtils.isWeb) {
+      await ProxyTunnel().start();
+    }
+
+    runApp(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: appState),
+          ChangeNotifierProvider.value(value: proxyProvider),
+          ChangeNotifierProvider.value(value: dlProvider),
+
+          ChangeNotifierProvider(create: (_) => BrowserProvider()),
+        ],
+        child: const OpenDirAppWrapper(),
       ),
     );
-  }
-
-  try {
-    if (PlatformUtils.isAndroid) {
-      await FlutterDisplayMode.setHighRefreshRate();
-    }
-  } catch (e) {
-    debugPrint('Failed to set high refresh rate: $e');
-  }
-
-  final appState = AppState();
-  await appState.init();
-
-  final proxyProvider = AppProxyProvider();
-  await proxyProvider.init();
-
-  final dlProvider = DownloadProvider();
-  await dlProvider.init();
-  dlProvider.setMaxConcurrent(appState.maxConcurrentDownloads);
-
-  // Start the localhost proxy tunnel for external video players (non-web only)
-  if (!PlatformUtils.isWeb) {
-    await ProxyTunnel().start();
-  }
-
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider.value(value: appState),
-        ChangeNotifierProvider.value(value: proxyProvider),
-        ChangeNotifierProvider.value(value: dlProvider),
-        ChangeNotifierProvider(create: (_) => BrowserProvider()),
-      ],
-      child: const OpenDirAppWrapper(),
-    ),
-  );
+  }, (error, stack) {
+    debugPrint('GLOBAL ERROR: $error');
+    debugPrint(stack.toString());
+  });
 }
 
 class OpenDirAppWrapper extends StatefulWidget {
